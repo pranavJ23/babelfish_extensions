@@ -101,6 +101,7 @@ Function sys.babelfish_conv_hijri_to_greg(date)
 Function sys.babelfish_conv_hijri_to_greg(numeric,numeric,numeric)
 Function sys.babelfish_conv_hijri_to_greg(text,text,text)
 Function sys.babelfish_conv_hijri_to_greg(timestamp without time zone)
+Function sys.babelfish_conv_string_to_binary(sys."varchar",numeric)
 Function sys.babelfish_conv_string_to_date(text,numeric)
 Function sys.babelfish_conv_string_to_datetime(text,text,numeric)
 Function sys.babelfish_conv_string_to_time(text,text,numeric)
@@ -191,11 +192,13 @@ Function sys.babelfish_try_conv_date_to_string(text,date,numeric)
 Function sys.babelfish_try_conv_datetime_to_string(text,text,timestamp without time zone,numeric)
 Function sys.babelfish_try_conv_float_to_string(text,double precision,numeric)
 Function sys.babelfish_try_conv_money_to_string(text,numeric,numeric)
+Function sys.babelfish_try_conv_string_to_binary(sys."varchar",numeric)
 Function sys.babelfish_try_conv_string_to_date(text,numeric)
 Function sys.babelfish_try_conv_string_to_datetime(text,text,numeric)
 Function sys.babelfish_try_conv_string_to_time(text,text,numeric)
 Function sys.babelfish_try_conv_string_to_varbinary(sys."varchar",numeric)
 Function sys.babelfish_try_conv_time_to_string(text,text,time without time zone,numeric)
+Function sys.babelfish_try_conv_to_binary(integer,anyelement,numeric)
 Function sys.babelfish_try_conv_to_date(anyelement)
 Function sys.babelfish_try_conv_to_datetime(anyelement)
 Function sys.babelfish_try_conv_to_time(anyelement)
@@ -560,6 +563,7 @@ Function sys.pgerror()
 Function sys.pltsql_assign_var(integer,anyelement)
 Function sys.pltsql_call_handler()
 Function sys.pltsql_inline_handler(internal)
+Function sys.pltsql_timezone_mapping_pg_to_windows(text)
 Function sys.pltsql_validator(oid)
 Function sys.point(sys.geometry)
 Function sys.proc_param_helper()
@@ -969,6 +973,10 @@ View sys.selective_xml_index_paths
 View sys.shipped_objects_not_in_sys
 View sys.sp_column_privileges_view
 View sys.sp_columns_100_view
+View sys.sp_datatype_info_100_view_odbc_version_2
+View sys.sp_datatype_info_100_view_odbc_version_3
+View sys.sp_datatype_info_view_odbc_version_2
+View sys.sp_datatype_info_view_odbc_version_3
 View sys.sp_fkeys_view
 View sys.sp_pkeys_view
 View sys.sp_special_columns_view

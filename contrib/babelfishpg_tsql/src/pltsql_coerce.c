@@ -76,7 +76,6 @@ PG_FUNCTION_INFO_V1(get_immediate_base_type_of_UDT);
 static Oid select_common_type_setop(ParseState *pstate, List *exprs, Node **which_expr, const char *context);
 static Oid select_common_type_for_isnull(ParseState *pstate, List *exprs);
 static Oid select_common_type_for_coalesce_function(ParseState *pstate, List *exprs);
-static Oid get_immediate_base_type_of_UDT_internal(Oid typeid);
 static Oid LookupCastFuncName(Oid castsource, Oid casttarget);
 static bool is_numeric_cast(Oid func_oid);
 static bool is_tsql_fixeddecimal_numeric(Oid oid);
@@ -1061,7 +1060,7 @@ run_tsql_best_match_heuristics(int nargs, Oid *input_typeids, FuncCandidateList 
  * This function returns the Immediate base type for UDT.
  * Returns InvalidOid if given type is not an UDT
  */
-static Oid
+Oid
 get_immediate_base_type_of_UDT_internal(Oid typeid)
 {
 	HeapTuple					tuple;
@@ -1200,7 +1199,7 @@ is_numeric_cast(Oid func_oid)
 /*
  * is_numeric_datatype - returns bool if given datatype is numeric, decimal, UDT on numeric or decimal.
  */
-static bool
+bool
 is_numeric_datatype(Oid typid)
 {
 	if (OidIsValid(typid) && getBaseType(typid) == NUMERICOID)
@@ -1221,9 +1220,10 @@ is_numeric_datatype(Oid typid)
 static int32
 get_default_typmod_for_fixedsize_dataypes(Oid resulttype)
 {
-	if (resulttype == INT4OID)
+	/* FIX ME: Remove is_tsql_int_datatype and is_tsql_bigint_datatype once BABEL-5955 is fixed */
+	if (resulttype == INT4OID || (*common_utility_plugin_ptr->is_tsql_int_datatype)(resulttype))
 		return DEFAULT_INT_TYPMOD;
-	else if (resulttype == INT8OID)
+	else if (resulttype == INT8OID || (*common_utility_plugin_ptr->is_tsql_bigint_datatype)(resulttype))
 		return DEFAULT_BIGINT_TYPMOD;
 	else if (resulttype == INT2OID)
 		return DEFAULT_SMALLINT_TYPMOD;
@@ -1235,6 +1235,19 @@ get_default_typmod_for_fixedsize_dataypes(Oid resulttype)
 		return TSQL_SMALLMONEY_TYPMOD;
 
 	return -1;
+}
+
+/*
+ * is_namespace_sys_or_pg_catalog
+ * Returns true if the given namespace Oid is either sys or pg_catalog.
+ */
+static bool
+is_namespace_sys_or_pg_catalog(Oid nspoid)
+{
+	if (nspoid == PG_CATALOG_NAMESPACE || nspoid == get_namespace_oid("sys", false))
+		return true;
+
+	return false;
 }
 
 /* 
@@ -1432,23 +1445,22 @@ resolve_numeric_typmod_from_exp(Plan *plan, Node *expr, bool *found)
 					}
 				}
 
-				/* if varno is INNER_VAR or OUTER_VAR then we need plan, else we cannot find typmod, hence set found as false and return -1 */
-				if (plan == NULL && (var->varno == INNER_VAR || var->varno == OUTER_VAR))
-				{
-					if (found != NULL) *found = false;
-					return -1;
-				}
-
 				if (var->vartypmod == -1)
 				{
 					/* UDT handling in T_var */
-					Oid immediate_base_type = get_immediate_base_type_of_UDT_internal(var->vartype);
+					Oid	immediate_base_type = get_immediate_base_type_of_UDT_internal(var->vartype);
 					if (OidIsValid(immediate_base_type))
 					{
 						int32 typmod = -1;
 						getBaseTypeAndTypmod(var->vartype, &typmod);
 						if (typmod != -1)
 							return typmod;
+						else
+						{
+							int32	fixlen_default_typmod = get_default_typmod_for_fixedsize_dataypes(immediate_base_type);
+							if (fixlen_default_typmod != -1)
+								return fixlen_default_typmod;
+						}
 					}
 
 					/*
@@ -1459,10 +1471,9 @@ resolve_numeric_typmod_from_exp(Plan *plan, Node *expr, bool *found)
 					 * Plan check ensures typmod consistency to preventing incorrect values,
 					 * ensuring plan is not changed if typmod is calculated in execution stage.
 					 */
-					if (plan)
+					if (plan || (plan == NULL && (var->varno == INNER_VAR || var->varno == OUTER_VAR)))
 					{
-						int32 		fixlen_default_typmod;
-						fixlen_default_typmod = get_default_typmod_for_fixedsize_dataypes(var->vartype);
+						int32	fixlen_default_typmod = get_default_typmod_for_fixedsize_dataypes(var->vartype);
 						if (fixlen_default_typmod != -1)
 							return fixlen_default_typmod;
 					}
@@ -1702,6 +1713,41 @@ resolve_numeric_typmod_from_exp(Plan *plan, Node *expr, bool *found)
 
 				if (rettypmod == -1)
 					rettypmod = get_default_typmod_for_fixedsize_dataypes(func->funcresulttype);
+
+				if (rettypmod == -1)
+				{
+					char		*funcName;
+					Oid			func_namespace_oid = InvalidOid;
+
+					/* We will find typmod for mathematical functions. */
+					funcName = get_func_name(func_oid);
+					func_namespace_oid = get_func_namespace(func_oid);
+
+					if (funcName &&
+						is_namespace_sys_or_pg_catalog(func_namespace_oid))
+					{
+						if ((strlen(funcName) == 5 && (strncmp(funcName, "round", 5) == 0)))
+						{
+							if (list_length(func->args) >= 1)
+							{
+								arg = linitial(func->args);
+								rettypmod = resolve_numeric_typmod_from_exp(plan, arg, &found_typmod);
+							}
+							if (!found_typmod)
+							{
+								if (found != NULL) *found = false;
+							}
+							if (rettypmod != -1)
+							{
+								pfree(funcName);
+								return rettypmod;
+							}
+						}
+						/* TODO: handle more functions if needed */
+					}
+					if (funcName)
+						pfree(funcName);
+				}
 
 				if (rettypmod == -1)
 				{
@@ -2641,7 +2687,41 @@ tsql_coerce_string_literal_hook(Oid targetTypeId,
 				break;
 		}
 
-		if (i == -1)
+		if ((*common_utility_plugin_ptr->is_tsql_binary_datatype) (baseTypeId) ||
+			(*common_utility_plugin_ptr->is_tsql_varbinary_datatype) (baseTypeId) ||
+			(*common_utility_plugin_ptr->is_tsql_rowversion_or_timestamp_datatype) (baseTypeId))
+		{
+			/*
+			 * binary datatype should be passed in client encoding
+			 * when explicit cast is called
+			 */
+
+			TypeName 	*varcharTypeName = makeTypeNameFromNameList(list_make2(makeString("sys"),
+																	makeString("varchar")));
+			Node 		*result;
+			Const 		*tempcon;
+
+			typenameTypeIdAndMod(NULL, (const TypeName *)varcharTypeName, &baseTypeId, &baseTypeMod);
+
+			tempcon = makeConst(baseTypeId, -1,
+								tsql_get_database_or_server_collation_oid_internal(false),
+								-1, PointerGetDatum(cstring_to_text(value)),
+								false, false);
+
+			result = coerce_to_target_type(NULL, (Node *) tempcon, baseTypeId,
+										   targetTypeId, targetTypeMod,
+										   COERCION_EXPLICIT,
+										   COERCE_EXPLICIT_CAST,
+										   location);
+			
+			if (varcharTypeName)
+				pfree(varcharTypeName);
+
+			ReleaseSysCache(baseType);
+			
+			return result;
+		}
+		else if (i == -1)
 		{
 			/*
 			 * i == 1 means the value does not contain any characters but
@@ -2757,38 +2837,6 @@ tsql_coerce_string_literal_hook(Oid targetTypeId,
 				default:
 					newcon->constvalue = stringTypeDatum(baseType, value, inputTypeMod);
 			}
-		}
-		else if ((*common_utility_plugin_ptr->is_tsql_binary_datatype) (baseTypeId) ||
-				 (*common_utility_plugin_ptr->is_tsql_varbinary_datatype) (baseTypeId) ||
-				 (*common_utility_plugin_ptr->is_tsql_rowversion_or_timestamp_datatype) (baseTypeId))
-		{
-			/*
-			 * binary datatype should be passed in client encoding
-			 * when explicit cast is called
-			 */
-
-			TypeName 	*varcharTypeName = makeTypeNameFromNameList(list_make2(makeString("sys"),
-																	makeString("varchar")));
-			Node 		*result;
-			Const 		*tempcon;
-
-			typenameTypeIdAndMod(NULL, (const TypeName *)varcharTypeName, &baseTypeId, &baseTypeMod);
-
-			tempcon = makeConst(baseTypeId, -1,
-								tsql_get_database_or_server_collation_oid_internal(false),
-								-1, PointerGetDatum(cstring_to_text(value)),
-								false, false);
-
-			result = coerce_to_target_type(NULL, (Node *) tempcon, baseTypeId,
-										   targetTypeId, targetTypeMod,
-										   COERCION_EXPLICIT,
-										   COERCE_EXPLICIT_CAST,
-										   location);
-			
-			pfree(varcharTypeName);
-			ReleaseSysCache(baseType);
-			
-			return result;
 		}
 		else
 		{

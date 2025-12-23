@@ -325,6 +325,7 @@ typedef FormData_bbf_function_ext *Form_bbf_function_ext;
 #define BABELFISH_SECURITYADMIN "securityadmin"
 #define BABELFISH_SYSADMIN "sysadmin"
 #define BABELFISH_DBCREATOR "dbcreator"
+#define BABELFISH_ROLEADMIN "bbf_role_admin"
 #define PERMISSIONS_FOR_ALL_OBJECTS_IN_SCHEMA "ALL"
 #define ALL_PERMISSIONS_ON_RELATION 47 /* last 6 bits as 101111 represents ALL privileges on a relation. */
 #define ALL_PERMISSIONS_ON_FUNCTION 128 /* last 8 bits as 10000000 represents ALL privileges on a procedure/function. */
@@ -333,6 +334,7 @@ typedef FormData_bbf_function_ext *Form_bbf_function_ext;
 #define OBJ_PROCEDURE "p"
 #define OBJ_FUNCTION "f"
 #define NUMBER_OF_PERMISSIONS 6
+#define INVALID_PERMISSION -1
 
 /* check if rolename is sysadmin */
 #define IS_ROLENAME_SYSADMIN(rolname) \
@@ -343,6 +345,11 @@ typedef FormData_bbf_function_ext *Form_bbf_function_ext;
 #define IS_ROLENAME_SECURITYADMIN(rolname) \
 	(strlen(rolname) == 13 && \
 	strncmp(rolname, BABELFISH_SECURITYADMIN, 13) == 0)
+
+/* check if rolename is bbf_role_admin */
+#define IS_ROLENAME_BABELFISHROLEADMIN(rolname) \
+	(strlen(rolname) == 14 && \
+	strncmp(rolname, BABELFISH_ROLEADMIN, 14) == 0)
 
 /* check if rolename is dbcreator */
 #define IS_ROLENAME_DBCREATOR(rolname) \
@@ -375,7 +382,7 @@ typedef struct FormData_bbf_schema_perms
 typedef FormData_bbf_schema_perms *Form_bbf_schema_perms;
 
 extern void add_entry_to_bbf_schema_perms(const char *schema_name, const char *object_name, int permission, const char *grantee, const char *object_type, const char *func_args);
-extern bool privilege_exists_in_bbf_schema_permissions(const char *schema_name, const char *object_name, const char *grantee, const char *object_type);
+extern bool privilege_exists_in_bbf_schema_permissions(const char *schema_name, const char *object_name, const char *grantee, const char *object_type, int curr_permission);
 extern void update_privileges_of_object(const char *schema_name, const char *object_name, int new_permission, const char *grantee, const char *object_type, bool is_grant);
 extern void remove_entry_from_bbf_schema_perms(const char *schema_name, const char *object_name, const char *grantee, const char *object_type);
 extern void remove_user_entry_from_bbf_schema_perms(Oid user_oid);

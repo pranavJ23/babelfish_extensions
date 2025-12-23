@@ -2086,6 +2086,8 @@ extern bool pltsql_support_tsql_transactions(void);
 extern bool pltsql_sys_function_pop(void);
 extern uint64 execute_bulk_load_insert(int ncol, int nrow,
 									   Datum *Values, bool *Nulls);
+extern void restrict_alter_owner_stmt(AlterOwnerStmt *stmt);
+extern void restrict_alter_table_stmt(AlterTableStmt *stmt);
 
 /*
  * Functions in pl_exec.c
@@ -2262,7 +2264,6 @@ extern bool is_tsql_datatype_with_max_scale_expr_allowed(Oid oid); /* sys.varcha
 extern bool is_tsql_text_ntext_or_image_datatype(Oid oid); /* sys.text, sys.ntext, sys.image */
 extern bool is_tsql_geometry_or_geography_datatype(Oid oid); /* sys.geometry / sys.geography */
 extern void downcase_truncate_split_object_name(char *four_part_object_name, char** server_name, char** db_name, char** schema_name, char** object_name);
-
 typedef struct
 {
 	bool		success;
@@ -2359,6 +2360,8 @@ extern void	exec_alter_role_cmd(char *query_str, RoleSpec *role);
  */
 extern bool validate_special_function(char *proc_nsname, char *proc_name, int nargs, bool num_args_match);
 extern int32	resolve_numeric_typmod_from_exp(Plan *plan, Node *expr, bool *found);
+extern Oid      get_immediate_base_type_of_UDT_internal(Oid oid);
+extern bool 	is_numeric_datatype(Oid typid);
 
 /*
  * Function in pltsql_ruleutils.c
